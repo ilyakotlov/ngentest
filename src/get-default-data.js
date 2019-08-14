@@ -68,32 +68,10 @@ module.exports = function getDirectiveData(tsParsed, filePath) {
       result.imports[lib2].push(className);
 
       result.providers[matches[1]] = {useValue: 'browser'};
-    } else if (param.type == 'ElementRef') {
-      result.imports[importLib].push(param.type);
-      result.mocks[param.type] = `
-        @Injectable()
-        class Mock${param.type} {
-          // constructor() { super(undefined); }
-          nativeElement = {}
-        }`;
-      result.providers[param.type] = {useClass: `Mock${param.type}`};
-    } else if (param.type === 'Router') {
-      result.imports[importLib].push(param.type);
-      result.mocks[param.type] = `
-        @Injectable()
-        class Mock${param.type} { navigate = jest.fn(); }
-      `;
-      result.providers[param.type] = {useClass: `Mock${param.type}`};
-    } else if (importLib.match(/^\.\//)) {  // starts from ./, which is a user-defined provider
-      result.imports[importLib].push(param.type);
-      result.mocks[param.type] = `
-        @Injectable()
-        class Mock${param.type} {}
-      `;
-      result.providers[param.type] = {useClass: `Mock${param.type}`};
     } else {
       result.imports[importLib].push(param.type);
-      result.providers[param.type] = param.type;
+      result.mocks[param.type] = `const mock${param.type} = mock<${param.type}>(${param.type});`;
+      result.providers[param.type] = {useFactory: `() => instance(mock${param.type})`};
     }
   });
 
