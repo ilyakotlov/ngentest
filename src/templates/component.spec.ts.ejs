@@ -1,55 +1,60 @@
 // tslint:disable
-import {
-  async,
-  fakeAsync,
-  ComponentFixture,
-  TestBed,
-  tick,
-  discardPeriodicTasks
-} from '@angular/core/testing';
-import { Injectable, CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { async, ComponentFixture } from '@angular/core/testing';
+import { NO_ERRORS_SCHEMA } from '@angular/core';
 import { configureTests, ConfigureFn } from '@frontend/test-helper';
-import { RouterTestingModule } from '@angular/router/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { ActivatedRoute } from '@angular/router';
-import {
-  mock,
-  instance,
-  when,
-  anyString,
-  deepEqual,
-  resetCalls
-} from 'ts-mockito';
-import { MockActivatedRoute } from '@frontend/test-helper/activated-route-mock';
-import {
-  MockNgRedux,
-  NgReduxTestingModule
-} from '@angular-redux/store/testing';
-import { of } from 'rxjs';
+import { mock, instance } from 'ts-mockito';
+import { MockComponent, MockPipe } from '@frontend/utils/test-mock-utils';
 
 <% for(var key in imports) { -%>
-import {<%- imports[key].map(el => `${el}`).join(', ') -%>} from '<%- key -%>';
+import { <%- imports[key].map(el => `${el}`).join(', ') -%> } from '<%- key -%>';
+<% } -%>
+
+<% for(var key in constants) { -%>
+const <%- key -%> = <%- constants[key] -%>;
 <% } -%>
 
 describe('<%= className %>', () => {
-  let fixture;
+  const template: string = '<%- componentPath -%>.html';
+  let fixture: ComponentFixture<<%- className -%>>;
   let component;
+
+  <% for(var key in variables) { -%>
+  const <%- key -%> = <%- variables[key] -%>;
+  <% } -%>
+
   <% for(var key in mocks) { -%>
     <%- mocks[key] -%>
   <% } -%>
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      declarations: [
-        <%= className %>
-      ],
-      providers: [<% for(var key in providers) { %>
-        <%- providers[key]+ ',' %><% } %>
-      ],
-      schemas: [ CUSTOM_ELEMENTS_SCHEMA ]
-    }).compileComponents();
-    fixture = TestBed.createComponent(<%= className %>);
-    component = fixture.debugElement.componentInstance;
+  beforeEach(async() => {
+    const config: ConfigureFn = testbed =>
+      testbed.configureTestingModule({
+        schemas: [NO_ERRORS_SCHEMA],
+        providers: [
+        <% for(var key in providers) { %>
+          <%- providers[key]+ ',' %><% } %>
+        ],
+        declarations: [
+          MockPipe({ name: 'dynamicTranslation' }),
+          MockComponent({ selector: 't' }),
+          <%= className %>
+        ],
+        imports: [<% for(var key in testbedImports) { %>
+            <%- testbedImports[key]+ ',' %>
+          <% } %>
+          HttpClientTestingModule
+        ]
+      });
+
+    configureTests(config, <%= className %>, template)
+      .then(testbed => {
+        fixture = testbed.createComponent(<%= className %>);
+        component = fixture.componentInstance;
+        component.value = Fixtures.value;
+        component.validFlag = { valid: true };
+      })
+      .then(() => fixture.whenStable());
   });
 
   it('should create a component', async () => {

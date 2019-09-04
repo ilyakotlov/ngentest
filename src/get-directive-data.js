@@ -3,17 +3,24 @@ const {getImportLib, reIndent} = require('./lib/util.js');
 const windowObjects = require('./lib/window-objects.js');
 
 module.exports = function getDirectiveData(tsParsed, filePath, angularType) {
+  const componentPath = './' + path.basename(filePath).replace(/.ts$/,'');
+  const componentFixturesPath = './__fixtures__/' + componentPath.split('/').pop().replace(/\.component$/, '.fixture')
+
   let result = {
+    componentPath: filePath.replace(/.ts$/,'').replace(/^apps\/backoffice\/src/, '@backoffice'),
     className: tsParsed.name,
     imports: {
-      '@angular/core': ['Component', 'Directive'],
-      [`./${path.basename(filePath)}`.replace(/.ts$/,'')]: [tsParsed.name] // the directive itself
+      [componentPath]: [tsParsed.name], // the component itself,
+      [componentFixturesPath]: ['*'] // fixtures for the component
     },
+    constants: {},
+    variables: {},
     inputs: {attributes: [], properties: []},
     outputs: {attributes: [], properties: []},
     providers: {},
     mocks: {},
-    functionTests: {}
+    functionTests: {},
+    testbedImports: {}
   };
 
   //
@@ -50,11 +57,12 @@ module.exports = function getDirectiveData(tsParsed, filePath, angularType) {
   //      . add te result.providers with mock 
   //    . otherwise, add to result.providers
   //
+
   (tsParsed.constructor.parameters || []).forEach(param => { // name, type, body
     // handle @Inject(XXXXXXXXX)
     const importLib = getImportLib(tsParsed.imports, param.type);
     const matches = param.body.match(/@Inject\(([A-Z0-9_]+)\)/);
-
+  
     if (matches) {
       let className = matches[1]
       let lib1 = getImportLib(tsParsed.imports, 'Inject');
@@ -63,38 +71,45 @@ module.exports = function getDirectiveData(tsParsed, filePath, angularType) {
       result.imports[lib2] = result.imports[lib2] || [];
       result.imports[lib1].push('Inject');
       result.imports[lib2].push(className);
-
-      result.providers[matches[1]] = `{provide: ${className},useValue: 'browser'}`;
-    } else if (param.type == 'ElementRef') {
-      result.imports[importLib] = result.imports[importLib] || [];
-      result.imports[importLib].push(param.type);
-      result.mocks[param.type] = reIndent(`
-        @Injectable()
-        class Mock${param.type} {
-          // constructor() { super(undefined); }
-          nativeElement = {}
-        }`);
-      result.providers[param.type] = `{provide: ${param.type}, useClass: Mock${param.type}}`;
-    } else if (param.type === 'Router') {
-      result.imports[importLib] = result.imports[importLib] || [];
-      result.imports[importLib].push(param.type);
-      result.mocks[param.type] = reIndent(`
-        @Injectable()
-        class Mock${param.type} { navigate = jest.fn(); }
-      `);
-      result.providers[param.type] = `{provide: ${param.type}, useClass: Mock${param.type}}`;
-    } else if (importLib.match(/^[\.]+/)) {  // starts from . or .., which is a user-defined provider
-      result.imports[importLib] = result.imports[importLib] || [];
-      result.imports[importLib].push(param.type);
-      result.mocks[param.type] = reIndent(`
-        @Injectable()
-        class Mock${param.type} { }
-      `);
-      result.providers[param.type] = `{provide: ${param.type}, useClass: Mock${param.type}}`;
-    } else {
-      result.imports[importLib] = result.imports[importLib] || [];
-      result.imports[importLib].push(param.type);
-      result.providers[param.type] = `${param.type}`;
+      
+      result.providers[matches[1]] = `{ provide: ${className},useValue: 'browser' }`;
+    } 
+    
+    switch (param.type) {
+      case 'ElementRef':
+        result.imports[importLib] = result.imports[importLib] || [];
+        result.imports[importLib].push(param.type);
+        result.mocks[param.type] = reIndent(`
+          @Injectable()
+          class Mock${param.type} {
+            // constructor() { super(undefined); }
+            nativeElement = {}
+          }`);
+        result.providers[param.type] = `{provide: ${param.type}, useClass: Mock${param.type}}`;
+        break;
+      case 'ActivatedRoute':
+      case 'Router':
+        result.imports[importLib] = result.imports[importLib] || [];
+        result.imports[importLib].push(param.type);
+        result.imports['@frontend/test-helper/activated-route-mock'] = ['MockActivatedRoute'];
+        result.providers[param.type] = `{ provide: ${param.type}, useFactory: () => new MockActivatedRoute() }`;
+        break;
+      case 'Utils':
+        result.constants['MockUtilities'] = 'mock<Utils>(Utils)';
+        result.providers['Utils'] = '{ provide: Utils, useFactory: () => MockUtilities }';
+        break;
+      case 'NgRedux<State>':
+        result.imports['@angular-redux/store'] = ['NgRedux'];
+        result.imports['@angular-redux/store/testing'] = ['MockNgRedux'];
+        result.constants['stubRedux'] = 'MockNgRedux.getInstance()';
+        result.providers['NgRedux'] = '{ provide: NgRedux, useFactory: () => stubRedux }';
+        break;
+      default:
+        result.imports[importLib] = result.imports[importLib] || [];
+        result.imports[importLib].push(param.type);
+        result.variables[`mock${param.type}`] = `mock<${param.type}>(${param.type})`;
+        result.providers[param.type] = `{ provide: ${param.type}, useFactory: () => instance(mock${param.type}) }`;
+        break;
     }
   });
 
